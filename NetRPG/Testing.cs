@@ -128,7 +128,11 @@ namespace NetRPG
 
             { "dcl_shared1.rpgle", "Hi        " },
             { "ile_module_a.rpgle,ile_module_b.rpgle", "You are Liam, you are 22 years old"},
-            { "system_printf.rpgle", 12}
+            { "system_printf.rpgle", 12},
+            { "system_dq.rpgle", "Hello world         "},
+
+            { "hex1.rpgle", "Hello world£" },
+            { "hex2.rpgle", "Hello world$" }
         };
 
         public static void RunTests(string testsStarting = "")
@@ -139,10 +143,12 @@ namespace NetRPG
             bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             string NewLine = (isWindows ? Environment.NewLine : "");
             Preprocessor prep;
-            RPGLex lexer;
             Statement[] Statements;
             Reader reader;
             VM vm;
+
+            DateTime start, end;
+            TimeSpan diff;
 
             int run = 0, passed = 0, failed = 0;
             Exception lastError = null;
@@ -159,6 +165,8 @@ namespace NetRPG
                     vm = new VM(true);
                     run++;
 
+                    start = DateTime.Now;
+
                     foreach (string file in files.Split(',')) {
                         Console.Write("Testing " + file.PadRight(35) + " ... ");
                         SourcePath = Path.Combine(Environment.CurrentDirectory, "RPGCode", file);
@@ -166,10 +174,7 @@ namespace NetRPG
                         prep = new Preprocessor();
                         prep.ReadFile(SourcePath);
 
-                        lexer = new RPGLex();
-                        lexer.Lex(String.Join(NewLine, prep.GetLines()));
-
-                        Statements = Statement.ParseDocument(lexer.GetTokens());
+                        Statements = Statement.ParseDocument(Preprocessor.GetTokens(prep.GetLines()));
 
                         reader = new Reader();
                         reader.ReadStatements(Statements);
@@ -192,11 +197,13 @@ namespace NetRPG
                             result = null;
                         }
                     }
+                    end = DateTime.Now;
+                    diff = (end - start);
 
                     if (result != null && result == TestCases[files])
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("successful.");
+                        Console.WriteLine("successful (" + diff.ToString(@"mm\:ss\:f\:ff") + ").");
                         Console.ForegroundColor = originalColor;
 
                         passed++;

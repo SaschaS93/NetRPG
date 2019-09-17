@@ -5,6 +5,7 @@ using NetRPG.Runtime;
 
 using System.Globalization;
 using System.Threading;
+using System.Text;
 
 namespace NetRPG.Language
 {
@@ -87,7 +88,15 @@ namespace NetRPG.Language
             _Module.AddDataSet(inds);
 
             SelectCount = 0;
+
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+            Configurations = new Dictionary<string, string>();
+            Configurations.Add("DATFMT", "en-UK");
+            Configurations.Add("CCSID", "IBM285");
         }
+
+        private Dictionary<string, string> Configurations;
 
         private bool isPR;
         public void ReadStatements(Statement[] Statements)
@@ -95,7 +104,7 @@ namespace NetRPG.Language
             RPGToken[] tokens;
 
             //TODO need to figure out how to put this into the DATFMT control opt
-            Thread.CurrentThread.CurrentCulture = new CultureInfo("en-UK");
+            Thread.CurrentThread.CurrentCulture = new CultureInfo(Configurations["DATFMT"]);
 
             foreach (Statement statement in Statements)
             {
@@ -104,8 +113,7 @@ namespace NetRPG.Language
                 switch (tokens[0].Type)
                 {
                     case RPGLex.Type.CTL:
-                        //Handle this here
-                        //TODO handle date format
+                        HandleControlOptions(tokens);
                         break;
                     case RPGLex.Type.DCL:
                         HandleDeclare(tokens);
@@ -161,6 +169,30 @@ namespace NetRPG.Language
             }
         }
 
+        private void HandleControlOptions(RPGToken[] tokens) {
+            for (int i = 3; i < tokens.Length; i++)
+            {
+                if (i + 1 < tokens.Length && tokens[i + 1].Type == RPGLex.Type.BLOCK)
+                {
+                    switch (tokens[i].Value.ToUpper())
+                    {
+                        case "DATFMT":
+                            //TODO: Handle RPG DATFMT special values
+                            Configurations["DATFMT"] = tokens[i + 1].Block?[0].Value;
+                            break;
+                        case "CCSID": //TODO: handle CCSID numbers instead of .net encoding types
+                            if (tokens[i + 1].Block?[0].Type == RPGLex.Type.INT_LITERAL) {
+                                Configurations["CCSID"] = tokens[i + 1].Block?[0].Value;
+                            } else {
+                                Error.ThrowCompileError("CCSID provided must be of type integer.");
+                            }
+                            break;
+                    }
+                    i++;
+                }
+            }
+        }
+
         private void HandleDeclare(RPGToken[] tokens)
         {
             //TODO: Check if DataSet already exists?
@@ -168,7 +200,6 @@ namespace NetRPG.Language
             DataSet[] structures;
             LOCATION currentLocation;
             string length = "";
-            Dictionary<string, string> config = new Dictionary<string, string>();
 
             for (int i = 3; i < tokens.Length; i++)
             {
@@ -189,6 +220,7 @@ namespace NetRPG.Language
                         case "USROPN":
                             dataSet._UserOpen = true;
                             break;
+                        case "EXTPGM":
                         case "EXTPROC":
                             dataSet._File = tokens[i + 1].Block?[0].Value;
                             break;
@@ -959,8 +991,11 @@ namespace NetRPG.Language
                                             CurrentProcudure.AddInstruction(Instructions.LDVARD, GlobalSubfields[token.Value].Structure); //Load local data
                                             break;
                                     }
+                                } else {
+                                    if (lastType == Types.Void)
+                                        Error.ThrowCompileError("Variable " + token.Value + " does not exist", token.Line);
                                 }
-                                CurrentProcudure.AddInstruction(Instructions.LDFLDV, token.Value); //Load field?
+                                CurrentProcudure.AddInstruction(Instructions.LDFLDV, token.Value);
                             }
                         }
                         break;
@@ -1105,10 +1140,14 @@ namespace NetRPG.Language
                         case RPGLex.Type.WORD_LITERAL:
                                 if (i + 1 < tokens.Count)
                                 {
-
                                     if (tokens[i + 1].Type == RPGLex.Type.STRING_LITERAL)
                                     {
                                         switch (tokens[i].Value) {
+                                            case "x":
+                                                //Encoding enc = Encoding.GetEncoding(Configurations["CCSID"]);
+                                                token = new RPGToken(RPGLex.Type.STRING_LITERAL, EBCDIC.ConvertHex(EBCDIC.GetEncoding(int.Parse(Configurations["CCSID"])), tokens[i + 1].Value));
+                                                ChangeMade = true;
+                                                break;
                                             case "d":
                                                 //TODO HANDLE DATE FORMAT SOMEHOW!!
                                                 token = new RPGToken(RPGLex.Type.INT_LITERAL, (DateTime.Parse(tokens[i + 1].Value) - new DateTime(1970, 1, 1, 0, 0, 0)).TotalSeconds.ToString(), tokens[i].Line);
