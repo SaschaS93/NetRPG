@@ -16,8 +16,8 @@ namespace NetRPG.Runtime
                 Window = new Typing.DisplayWindow ("NetRPG") {
                     X = 0,
                     Y = 0,
-                    Width = 80,
-                    Height = 24
+                    Width = 83,
+                    Height = 27
                 };
                 
                 Window.ColorScheme = Colors.Base;
@@ -45,6 +45,7 @@ namespace NetRPG.Runtime
         }
 
         public static void End() {
+            Application.RequestStop();
             Application.End(State);
         }
     }

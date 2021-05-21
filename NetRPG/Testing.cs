@@ -12,6 +12,7 @@ namespace NetRPG
         private static Dictionary<string, dynamic> TestCases = new Dictionary<string, dynamic>()
         {
             { "dcl_char.rpgle", "Hello world    " },
+            { "dcl_varchar.rpgle", "Hello world" },
             { "dcl_int.rpgle", 200 },
             { "dcl_fixed.rpgle", 24691.35 },
             { "dcl_ind.rpgle", "101" },
@@ -92,8 +93,15 @@ namespace NetRPG
             { "op_other2.rpgle", 3 },
             { "op_dow.rpgle", 11 },
             { "op_dow2.rpgle", 11},
+            { "op_iter1.rpgle", 9 },
+            { "op_leave1.rpgle", 5 },
+            { "op_leave2.rpgle", 5 },
             { "op_dsply.rpgle", 1 },
             { "op_eval1.rpgle", 10 },
+            { "op_for1.rpgle", 11 },
+            { "op_for2.rpgle", 0 },
+            { "op_for3.rpgle", 5 },
+            { "op_for4.rpgle", 10 },
 
             { "op_reset1.rpgle", "Hello world" },
             { "op_reset2.rpgle", 134 },
@@ -110,17 +118,32 @@ namespace NetRPG
             { "op_in2.rpgle", 2342359 },
             { "op_in3.rpgle", 12345.67 }, 
 
+            //Classic JSON RLA tests
             { "op_file_open.rpgle", 1 },
             { "op_file_read.rpgle", "My first p" },
             { "op_file_read2.rpgle", "My second "},
+            { "op_file_read3.rpgle", 56 },
             { "op_file_read_qualified.rpgle", "My second " },
             { "op_file_readp.rpgle", "My first p" },
             { "op_file_chain.rpgle", "My second "},
             { "op_file_chain2.rpgle", "My second My first p"},
             { "op_file_chain3.rpgle", "bethMy second"},
-            { "op_file_write.rpgle", "My new pro" },
-            { "bif_eof1.rpgle", 2 },
-            { "bif_eof2.rpgle", "01" },
+            { "op_file_setll1.rpgle", "101"},
+            { "op_file_setll2.rpgle", "1E010"},
+
+            //ODBC tests...
+            // { "op_file_open.rpgle", true },
+            // { "op_file_read.rpgle", "A00" },
+            // { "op_file_read2.rpgle", "B01"},
+            // { "op_file_read_qualified.rpgle", "B01" },
+            // { "op_file_readp.rpgle", "A00" },
+            // { "op_file_chain.rpgle", "DEVELOPMENT CENTER"},
+            // { "op_file_chain2.rpgle", "000020000100"},
+            // { "op_file_chain3.rpgle", "000020LOGIC"},
+            
+            // { "op_odbc_real_read1.rpgle", "SPIFFY COMPUTER SERVICE DIV." },
+            // { "op_odbc_real_read2.rpgle", 14 },
+            // { "op_odbc_real_chain.rpgle", "OPERATIONS" },
 
             { "ind1.rpgle", "1" },
             { "ind2.rpgle", "1" },
@@ -169,7 +192,7 @@ namespace NetRPG
 
                     foreach (string file in files.Split(',')) {
                         Console.Write("Testing " + file.PadRight(35) + " ... ");
-                        SourcePath = Path.Combine(Environment.CurrentDirectory, "RPGCode", file);
+                        SourcePath = Path.Combine(Environment.CurrentDirectory, "objects", file);
 
                         prep = new Preprocessor();
                         prep.ReadFile(SourcePath);

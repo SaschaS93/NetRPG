@@ -6,19 +6,19 @@ using NetRPG.Runtime.Typing.Files;
 
 namespace NetRPG.Runtime.Functions.Operation
 {
+    [RPGFunctionAlias("%FOUND")]
     class Found : Function
     {
         public override object Execute(object[] Parameters)
         {
-
-            if (Parameters[0] is Table)
+            if (Parameters[0] is FileT)
             {
-                Table table = Parameters[0] as Table;
-                return (!table.isEOF() ? "1" : "0");
+                FileT rla = Parameters[0] as FileT;
+                return (rla.isEOF() ? "0" : "1");
             }
             else
             {
-                Error.ThrowRuntimeError("%FOUND", "Table is required.");
+                Error.ThrowRuntimeError("%FOUND", "Table or display is required.");
             }
             return null;
         }

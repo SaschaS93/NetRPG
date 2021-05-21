@@ -11,8 +11,8 @@ namespace NetRPG.Runtime.Typing
     class FileT : DataValue
     {
       private Boolean _EOF = false;
-      public FileT(string name, string file, bool userOpen) {
-      }
+      public FileT(string name, bool userOpen) {
+    }
 
       public virtual Boolean isEOF() => this._EOF;
 
@@ -28,15 +28,27 @@ namespace NetRPG.Runtime.Typing
 
       }
 
+      public virtual void ReadChanged(DataValue Structure) {
+
+      }
+
       public virtual void Chain(DataValue Structure, dynamic[] keys) {
 
       }
 
-      public virtual void ExecuteFormat(DataValue Indicators, DataValue Structure) {
+      public virtual void SetLowerLimit(dynamic[] keys) {
+
+      }
+
+      public virtual void SetGreaterThan(dynamic[] keys) {
+
+      }
+
+      public virtual void ExecuteFormat(DataValue Structure, DataValue Indicators) {
         
       }
 
-      public virtual void Write(DataValue Structure) {
+      public virtual void Write(DataValue Structure, DataValue Indicators) {
         
       }
     }

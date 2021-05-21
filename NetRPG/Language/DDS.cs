@@ -18,6 +18,9 @@ namespace NetRPG.Language
         public DisplayParse()
         {
             Formats = new Dictionary<string, RecordInfo>();
+
+            CurrentRecord = new RecordInfo("GLOBAL");
+            CurrentRecord.Keywords = new Dictionary<string, string>();
         }
 
         public void ParseFile(string Location)
@@ -29,7 +32,7 @@ namespace NetRPG.Language
         {
             int textcounter = 0;
             char[] chars;
-            string name, len, type, dec, inout, x, y, keywords, Line = "";
+            string conditionals, name, len, type, dec, inout, x, y, keywords, Line = "";
 
             //https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_73/rzakc/rzakcmstpsnent.htm
             // try
@@ -38,6 +41,7 @@ namespace NetRPG.Language
                 {
                     Line = TrueLine.PadRight(80);
                     chars = Line.ToCharArray();
+                    conditionals = buildString(chars, 6, 10).ToUpper();
                     name = buildString(chars, 18, 10).Trim();
                     len = buildString(chars, 29, 5).Trim();
                     type = chars[34].ToString().ToUpper();
@@ -46,6 +50,10 @@ namespace NetRPG.Language
                     y = buildString(chars, 38, 3).Trim();
                     x = buildString(chars, 41, 3).Trim();
                     keywords = Line.Substring(44).Trim();
+
+                    if (chars[6] == '*') {
+                        continue;
+                    }
 
                     switch (chars[16])
                     {
@@ -117,6 +125,7 @@ namespace NetRPG.Language
                                         CurrentField.dataType._Type = Types.Character;
                                         break;
                                 }
+                                HandleConditionals(conditionals);
                                 HandleKeywords(keywords);
                             }
                             else
@@ -124,6 +133,7 @@ namespace NetRPG.Language
                                 HandleKeywords(keywords);
                                 if (CurrentField != null)
                                 {
+                                    HandleConditionals(conditionals);
                                     if (CurrentField.Name == null)
                                     {
                                         textcounter++;
@@ -187,8 +197,37 @@ namespace NetRPG.Language
                     CurrentRecord.Keywords.Add(option, value);
             } else {
                 foreach (string keyword in Keywords.Split(' ')) {
-                    CurrentField.Keywords.Add(keyword, "");
+                    if (CurrentField != null)
+                        CurrentField.Keywords.Add(keyword, "");
+                    else
+                        CurrentRecord.Keywords.Add(keyword, "");
                 }
+            }
+        }
+
+        private void HandleConditionals(string Conditionals) {
+            if (Conditionals.Trim() == "") return;
+
+            //TODO: something with condition
+            string condition = Conditionals.Substring(0, 1); //A (and) or O (or)
+
+            string current = "";
+            bool negate = false;
+            int indicator = 0;
+
+            int cIndex = 1;
+
+            while (cIndex <= 7) {
+                current = Conditionals.Substring(cIndex, 3);
+
+                if (current.Trim() != "") {
+                    negate = (Conditionals.Substring(cIndex, 1) == "N");
+                    indicator = int.Parse(Conditionals.Substring(cIndex+1, 2));
+
+                    CurrentField.Conditionals.Add(new Conditional {indicator = indicator, negate = negate});
+                }
+                
+                cIndex += 3;
             }
         }
 
@@ -237,6 +276,8 @@ namespace NetRPG.Language
         public FieldType fieldType;
         public System.Drawing.Point Position;
 
+        public List<Conditional> Conditionals = new List<Conditional>();
+
         public Dictionary<string, string> Keywords = new Dictionary<string, string>();
 
         public enum FieldType
@@ -248,5 +289,10 @@ namespace NetRPG.Language
             Hidden
         }
 
+    }
+
+    public class Conditional {
+        public Boolean negate = false;
+        public int indicator;
     }
 }

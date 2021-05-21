@@ -6,20 +6,21 @@ using NetRPG.Runtime.Typing.Files;
 
 namespace NetRPG.Runtime.Functions.Operation
 {
-    class Chain : Function
+    [RPGFunctionAlias("SETLL")]
+    class SetLowerLimit : Function
     {
         public override object Execute(object[] Parameters)
         {
 
-            if (Parameters[0] is Structure && Parameters[1] is JSONTable)
+            if (Parameters[0] is JSONTable)
             {
-                JSONTable table = Parameters[1] as JSONTable;
-                table.Chain(Parameters[0] as Structure, Parameters[2] as dynamic[]);
+                JSONTable table = Parameters[0] as JSONTable;
+                table.SetLowerLimit(Parameters[1] as dynamic[]);
             }
             else
             {
                 //TODO: throw error: incorrect type
-                Error.ThrowRuntimeError("READ", "Table is required.");
+                Error.ThrowRuntimeError("SETLL", "Table is required.");
             }
             return null;
         }

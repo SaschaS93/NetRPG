@@ -8,14 +8,14 @@ using NetRPG.Language;
 
 namespace NetRPG.Runtime.Typing.Files
 {
-    class Table : FileT
+    class JSONTable : FileT
     {
         private string _Path;
         private int _RowPointer = -1;
         private List<Dictionary<string, dynamic>> _Data;
         private Boolean _EOF = false;
 
-        public Table(string name, string file, bool userOpen) : base(name, file, userOpen) {
+        public JSONTable(string name, string file, bool userOpen) : base(name, userOpen) {
             this.Name = name;
             _Path = Path.Combine(Environment.CurrentDirectory, "objects", file + ".json");
 
@@ -35,11 +35,18 @@ namespace NetRPG.Runtime.Typing.Files
 
                 DataSet subfield;
                 JProperty DataProperty;
+                JObject columnData;
                 foreach (JToken obj in json["columns"].ToList<JToken>()) {
                     DataProperty = obj.ToObject<JProperty>();
+                    columnData = (json["columns"][DataProperty.Name] as JObject);
                     subfield = new DataSet(DataProperty.Name);
-                    subfield._Type = Reader.StringToType(json["columns"][DataProperty.Name]["type"].ToString());
-                    subfield._Length = (int)json["columns"][DataProperty.Name]["length"];
+                    subfield._Type = Reader.StringToType(columnData["type"].ToString(), columnData["length"].ToString());
+                    subfield._Length = (int)columnData["length"];
+
+                    if (columnData.ContainsKey("precision")) {
+                        subfield._Precision = (int)columnData["precision"];
+                    }
+
                     subfields.Add(subfield);
                 }
 
@@ -76,6 +83,9 @@ namespace NetRPG.Runtime.Typing.Files
                         case JTokenType.String:
                             row[property.Name] = property.Value.ToString();
                             break;
+                        case JTokenType.Null:
+                            row[property.Name] = null;
+                            break;
                     }
                 }
                 this._Data.Add(row);
@@ -91,7 +101,11 @@ namespace NetRPG.Runtime.Typing.Files
                 this._EOF = false;
 
                 foreach (string varName in this._Data[this._RowPointer].Keys.ToArray()) {
-                    Structure.GetData(varName).Set(this._Data[this._RowPointer][varName]);
+                    if (this._Data[this._RowPointer][varName] == null) {
+                        Structure.GetData(varName).DoInitialValue();
+                    } else {
+                        Structure.GetData(varName).Set(this._Data[this._RowPointer][varName]);
+                    }
                 }
 
             } else {
@@ -139,14 +153,40 @@ namespace NetRPG.Runtime.Typing.Files
             }
         }
 
-        public override void Write(DataValue Structure) {
-            Dictionary<string, dynamic> NewRow = new Dictionary<string, dynamic>();
+        public override void SetLowerLimit(dynamic[] keys) {
+            this._EOF = true;
 
-            foreach (string Subfield in Structure.GetSubfieldNames()) {
-                NewRow[Subfield] = Structure.Get(Subfield);
+            if (keys[0] is string) {
+                switch (keys[0]) {
+                    case "*START":
+                    case "*LOVAL":
+                        this._EOF = false;
+                        this._RowPointer = 0;
+                        return;
+                    case "*END":
+                    case "*HIVAL":
+                        this._EOF = true;
+                        this._RowPointer = _Data.Count;
+                        return;
+                }
             }
 
-            this._Data.Add(NewRow);
+            this._RowPointer += 1;
+
+            while (this._RowPointer >= 0 && this._RowPointer < this._Data.Count()) {
+                for (var i = 0; i < keys.Length; i++) {
+                    if (keys[i] != this._Data[this._RowPointer].ElementAt(i).Value) {
+                        continue;
+                    }
+
+                    this._EOF = false;
+
+                    this._RowPointer -= 1;
+                    return;
+                }
+
+                this._RowPointer += 1;
+            }
         }
     }
 }

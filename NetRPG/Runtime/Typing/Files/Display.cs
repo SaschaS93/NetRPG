@@ -15,16 +15,20 @@ namespace NetRPG.Runtime.Typing.Files
         private string _Path;
         private int _RowPointer = -1;
         private Dictionary<string, RecordInfo> RecordFormats;
-        private Boolean _EOF = false;
+
+        private Dictionary<string, Subfile> Subfiles;
+        private Boolean _EOF = true;
 
         private Dictionary<string, View> localFields;
-        public Display(string name, string file, bool userOpen) : base(name, file, userOpen) {
+        public Display(string name, string file, bool userOpen) : base(name, userOpen) {
             this.Name = name;
             _Path = Path.Combine(Environment.CurrentDirectory, "objects", file + ".dspf");
 
             if (!userOpen)
                 this.Open();
         }
+
+        public override Boolean isEOF() => this._EOF;
 
         public static DataSet[] CreateStructs(string file, Boolean qualified = false) {
             List<DataSet> Structures = new List<DataSet>();
@@ -59,26 +63,102 @@ namespace NetRPG.Runtime.Typing.Files
             this.RecordFormats = parser.GetRecordFormats();
             localFields = new Dictionary<string, View>();
 
-            string indicator;
+            string indicator, currentSubfile;
             foreach (RecordInfo format in RecordFormats.Values) {
+                if (format.Name == "GLOBAL") continue;
+                else
+                    foreach (var pair in RecordFormats["GLOBAL"].Keywords)
+                        format.Keywords.Add(pair.Key, pair.Value);
+
+                currentSubfile = "";
+
                 if (format.Keywords != null) {
                     foreach (string keyword in format.Keywords.Keys) {
-                        if (keyword.StartsWith("CF") && keyword.Length == 4) {
-                            //Sets the function key up
-                            indicator = keyword.Substring(2, 2).TrimStart('0');
-                            format.Function[DisplayParse.IntToKey(int.Parse(indicator))] = int.Parse(format.Keywords[keyword]);
+                        switch (keyword) {
+                            case "SFLCTL":
+                                if (Subfiles == null) Subfiles = new Dictionary<string, Subfile>();
+                                
+                                currentSubfile = format.Keywords[keyword];
+                                Subfiles.Add(
+                                    currentSubfile,
+                                    new Subfile() {rows = new List<Row>()}
+                                );
+                                break;
+
+                            case "SFLPAG":
+                                Subfiles[currentSubfile].PerPage = int.Parse(format.Keywords[keyword]);
+                                break;
+
+                            case "SFLSIZ":
+                                Subfiles[currentSubfile].MaxRows = int.Parse(format.Keywords[keyword]);
+                                break;
+
+                            case "PAGEUP":
+                            case "ROLLDOWN":
+                                format.Function[Key.PageUp] = int.Parse(format.Keywords[keyword]);
+                                break;
+
+                            case "PAGEDOWN":
+                            case "ROLLUP":
+                                format.Function[Key.PageDown] = int.Parse(format.Keywords[keyword]);
+                                break;
+
+                            default:
+                                if (keyword.StartsWith("CF") && keyword.Length == 4) {
+                                    //Sets the function key up
+                                    indicator = keyword.Substring(2, 2).TrimStart('0');
+                                    format.Function[DisplayParse.IntToKey(int.Parse(indicator))] = int.Parse(format.Keywords[keyword]);
+                                }
+                                break;
                         }
                     }
                 }
             }
         }
 
+        public override void ReadChanged(DataValue Structure) {
+            Subfile subfile = Subfiles[Structure.GetName()];
+
+            this._RowPointer += 1;
+            
+            while (this._RowPointer >= 0 && this._RowPointer < subfile.rows.Count) {
+                
+                if (subfile.rows[this._RowPointer].Changed) {
+                    this._EOF = false;
+
+                    foreach (string varName in subfile.rows[this._RowPointer].Columns.Keys.ToArray()) {
+                        Structure.GetData(varName).Set(subfile.rows[this._RowPointer].Columns[varName]);
+                    }
+
+                    return;
+                }
+
+                this._RowPointer += 1;
+
+            }
+
+            this._EOF = true;
+        }
 
         public override void ExecuteFormat(DataValue Structure, DataValue Indicators) {
             RecordInfo recordFormat = RecordFormats[Structure.GetName().ToUpper()];
+
+            bool isSubfile = recordFormat.Keywords.Keys.Contains("SFLCTL");
+            string subfileName = recordFormat.Keywords["SFLCTL"];
+            Subfile subfile;
             
             //Kick in gui.cs
-            this.Write(Structure);
+            if (isSubfile) {
+                subfile = Subfiles[subfileName];
+                int rows = subfile.PerPage;
+
+                for (int row = 0; row < rows && row < subfile.rows.Count; row++)
+                    this.WriteSubfileRow(RecordFormats[subfileName], row);
+
+            } else {
+                this.Write(Structure, null);
+            }
+
             foreach (View view in localFields.Values) {
                 WindowHandler.Add(view);
             }
@@ -94,32 +174,149 @@ namespace NetRPG.Runtime.Typing.Files
             for (int i = 1; i <= 99; i ++)
                 Indicators.GetData("IN" + i.ToString().PadLeft(2, '0')).Set(i == indicator);
 
-            foreach (string varName in Structure.GetSubfieldNames()) {
-                if (this.localFields[varName] is TextField)
-                    Structure.GetData(varName).Set((this.localFields[varName] as TextField).Text.ToString());
+            if (isSubfile) {
+                //Store subfile results back into subfile.rows
+                string[] pieces;
+                int rowIndex;
+                string value;
+
+                this._EOF = true;
+                this._RowPointer = -1;
+
+                foreach (string field in this.localFields.Keys) {
+                    if (this.localFields[field] is TextField) {
+                        pieces = field.Split('-');
+                        rowIndex = int.Parse(pieces[1]);
+                        value = (this.localFields[field] as TextField).Text.ToString();
+
+                        if (value.Trim() != Subfiles[subfileName].rows[rowIndex].Columns[pieces[0]].Trim()) {
+                            Subfiles[subfileName].rows[rowIndex].Columns[pieces[0]] = value;
+                            Subfiles[subfileName].rows[rowIndex].Changed = true;
+                        } else {
+                            Subfiles[subfileName].rows[rowIndex].Changed = false;
+                        }
+                    }
+
+                }
+
+            } else {
+                //Not a subfile, restore values back into fields from EXFMT structure
+                foreach (string varName in Structure.GetSubfieldNames()) {
+                    if (this.localFields.ContainsKey(varName))
+                        if (this.localFields[varName] is TextField)
+                            Structure.GetData(varName).Set((this.localFields[varName] as TextField).Text.ToString());
+                }
             }
+
 
             localFields = new Dictionary<string, View>();
         }
 
-        public override void Write(DataValue Structure) {
+        public override void Write(DataValue Structure, DataValue Indicators) {
 
             View currentView = null;
-            RecordInfo recordFormat = RecordFormats[Structure.GetName().ToUpper()];
+            string name = Structure.GetName().ToUpper();
+            RecordInfo recordFormat = RecordFormats[name];
+            bool toShow = true;
 
-            foreach (FieldInfo field in recordFormat.Fields) {
+            if (recordFormat.Keywords.Keys.Contains("SFL")) {
+
+                //If this indicator is on, we clear the subfile.
+                if (Indicators.Get("IN85") == "1") {
+                    Subfiles[name].rows.Clear();
+                    Indicators.GetData("IN85").Set(false);
+
+                } else {
+                    Row row = new Row();
+                    foreach (FieldInfo field in recordFormat.Fields) {
+                        row.Columns.Add(field.Name, Structure.GetData(field.Name).Get());
+                    }
+
+                    Subfiles[name].rows.Add(row);
+                }
+
+            } else {
+
+                if (recordFormat.Fields.Count() > 0) {
+                    foreach (FieldInfo field in recordFormat.Fields) {
+                        toShow = true;
+
+                        if (field.Conditionals.Count > 0) {
+                            foreach (Conditional cond in field.Conditionals) {
+                                toShow = (Indicators.Get("IN" + cond.indicator.ToString().PadLeft(2, '0')) == "1");
+                            }
+                        }
+
+                        if (!toShow) continue;
+
+                        switch (field.fieldType) {
+                            case FieldInfo.FieldType.Const:
+                                currentView = new Label (field.Value) { X = field.Position.X, Y = field.Position.Y };
+                                break;
+                                
+                            case FieldInfo.FieldType.Output:
+                                currentView = new Label (Structure.GetData(field.Name).Get().ToString()) { X = field.Position.X, Y = field.Position.Y };
+                                break;
+
+                            case FieldInfo.FieldType.Input:
+                                currentView = new TextField ("") {
+                                    X = field.Position.X, Y = field.Position.Y,
+                                    Width = field.dataType._Length,
+                                    Height = 1
+                                };
+                                break;
+                                
+                            case FieldInfo.FieldType.Both:
+                                currentView = new TextField ("") {
+                                    X = field.Position.X, Y = field.Position.Y,
+                                    Width = field.dataType._Length,
+                                    Height = 1, Text = Structure.GetData(field.Name).Get().ToString()
+                                };
+                                break;
+                        }
+
+                        if (field.Keywords != null) {
+                            foreach (string keyword in field.Keywords.Keys) {
+                                switch (keyword) {
+                                    case "COLOR":
+                                        currentView.ColorScheme = new ColorScheme();
+                                        currentView.ColorScheme.Normal = Application.Driver.MakeAttribute (TextToColor(field.Keywords[keyword]), Color.Black);
+                                        currentView.ColorScheme.Focus = Application.Driver.MakeAttribute (TextToColor(field.Keywords[keyword]), Color.Black);
+                                        break;
+                                        
+                                    case "SYSNAME":
+                                        (currentView as Label).Text = Environment.MachineName.Substring(0, Math.Min(8, Environment.MachineName.Length));
+                                        break;
+                                }
+                            } 
+                        }
+
+                        localFields.Add(field.Name, currentView);
+                    }
+                }
+            }
+
+        }
+
+        public void WriteSubfileRow(RecordInfo format, int plusRow = 0) {
+            View currentView = null;
+            Subfile subfile = Subfiles[format.Name];
+
+            foreach (FieldInfo field in format.Fields) {
+                currentView = null;
+
                 switch (field.fieldType) {
                     case FieldInfo.FieldType.Const:
-                        currentView = new Label (field.Value) { X = field.Position.X, Y = field.Position.Y };
+                        currentView = new Label (subfile.rows[plusRow].Columns[field.Name]) { X = field.Position.X, Y = field.Position.Y + plusRow };
                         break;
                         
                     case FieldInfo.FieldType.Output:
-                        currentView = new Label (Structure.GetData(field.Name).Get().ToString()) { X = field.Position.X, Y = field.Position.Y };
+                        currentView = new Label (subfile.rows[plusRow].Columns[field.Name]) { X = field.Position.X, Y = field.Position.Y + plusRow };
                         break;
 
                     case FieldInfo.FieldType.Input:
                         currentView = new TextField ("") {
-                            X = field.Position.X, Y = field.Position.Y,
+                            X = field.Position.X, Y = field.Position.Y + plusRow,
                             Width = field.dataType._Length,
                             Height = 1
                         };
@@ -127,9 +324,9 @@ namespace NetRPG.Runtime.Typing.Files
                         
                     case FieldInfo.FieldType.Both:
                         currentView = new TextField ("") {
-                            X = field.Position.X, Y = field.Position.Y,
+                            X = field.Position.X, Y = field.Position.Y + plusRow,
                             Width = field.dataType._Length,
-                            Height = 1, Text = Structure.GetData(field.Name).Get().ToString()
+                            Height = 1, Text = subfile.rows[plusRow].Columns[field.Name]
                         };
                         break;
                 }
@@ -150,9 +347,9 @@ namespace NetRPG.Runtime.Typing.Files
                     } 
                 }
 
-                localFields.Add(field.Name, currentView);
+                if (currentView != null)
+                    localFields.Add(field.Name + "-" + plusRow.ToString(), currentView);
             }
-
         }
 
 
@@ -179,5 +376,19 @@ namespace NetRPG.Runtime.Typing.Files
                     return Color.BrightGreen;
             }
         }
+    }
+
+    public class Subfile {
+
+        public List<Row> rows;
+        
+        public int MaxRows = 0;
+
+        public int PerPage = 0;
+    }
+
+    public class Row {
+        public bool Changed = false;
+        public Dictionary<string, string> Columns = new Dictionary<string, string>();
     }
 }

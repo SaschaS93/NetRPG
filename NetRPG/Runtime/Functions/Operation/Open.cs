@@ -10,9 +10,9 @@ namespace NetRPG.Runtime.Functions.Operation
     {
         public override object Execute(object[] Parameters)
         {
-            if (Parameters[0] is Table)
+            if (Parameters[0] is JSONTable)
             {
-                Table table = Parameters[0] as Table;
+                JSONTable table = Parameters[0] as JSONTable;
                 table.Open();
             }
             else
